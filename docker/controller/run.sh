@@ -41,11 +41,15 @@ spec:
         value: '$PODS'
       - name: NODES
         value: '$NODES'
-      - name: PROBER_IP
+      - name: SELF_IP
         valueFrom:
           fieldRef:
            fieldPath: status.podIP
-      - name: PROBER_NODE
+      - name: SELF_POD
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.name
+      - name: SELF_NODE
         valueFrom:
           fieldRef:
            fieldPath: spec.nodeName
