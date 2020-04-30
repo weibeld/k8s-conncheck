@@ -13,6 +13,7 @@ PODS=$(\
     jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]' \
 )
 
+# TODO: restrict nodes to worker nodes
 NODES=$(\
   kubectl \
     --server "$API_SERVER" \
@@ -35,7 +36,7 @@ spec:
   - image: weibeld/k8s-conncheck-prober
     name: conncheck-prober
     imagePullPolicy: Always
-    command: ["sleep", "infinity"]
+    #command: ["sleep", "infinity"]
     env:
       - name: PODS
         value: '$PODS'
@@ -55,4 +56,4 @@ spec:
            fieldPath: spec.nodeName
 EOF
 
-kubectl apply -f "$PROBER_MANIFEST"
+kubectl create -f "$PROBER_MANIFEST"
