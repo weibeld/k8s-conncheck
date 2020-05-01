@@ -17,6 +17,9 @@ rules:
 - apiGroups: [""]
   verbs: [get]
   resources: [pods, pods/log]
+- apiGroups: ["apps"]
+  verbs: [get]
+  resources: [daemonsets]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -37,11 +40,12 @@ metadata:
   name: conncheck-controller
 spec:
   hostNetwork: true
+  restartPolicy: Never
   serviceAccountName: conncheck-controller
   containers:
   - image: weibeld/k8s-conncheck-controller
     name: conncheck-controller
-    command: ["sleep", "infinity"]
+    #command: ["sleep", "infinity"]
     imagePullPolicy: Always
     volumeMounts:
       - name: kubelet-conf

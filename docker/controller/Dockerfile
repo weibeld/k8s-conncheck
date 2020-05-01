@@ -10,3 +10,5 @@ RUN wget -q -O /usr/bin/yq "$(wget -q -O - https://api.github.com/repos/mikefara
 RUN wget -q -O /usr/bin/kubectl "https://storage.googleapis.com/kubernetes-release/release/$(wget -q -O - https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x /usr/bin/kubectl
 
 COPY run.sh /root/run.sh
+
+CMD ["/root/run.sh"]
