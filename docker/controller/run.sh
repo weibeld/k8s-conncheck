@@ -1,5 +1,37 @@
 #!/bin/sh
 
+# Invoked before the tests of a prober Pod start. Receives the following args:
+#   $1: IP address of the prober Pod
+#   $2: name of the node on which the prober Pod is running
+#   $3: IP address of the node on which the prober Pod is running
+init() {
+  cat <<EOF
+$(date -Isec) Tests from temporary Pod 'conncheck-prober' ($1) on node '$2' ($3)
+EOF
+}
+
+# Invoked for each test result that the prober Pod returns (a single test 
+# consists of pinging a target and testing connectivity; a target may be a Pod
+# or a node; a prober Pod performs a sequence of such tests). Receives the
+# following argument:
+#   $1: test result
+# The test result is a JSON object (formatted as a single line) with the
+# following fields:
+#   - test_id (string):     identifier of the test being performed
+#   - target_ip (string):   IP address of the target 
+#   - target_name (string): friendly name of the target
+#   - success (boolean):    whether the target could be reached or not
+process_test_result() {
+  test_result=$1
+  echo "$test_result"
+}
+
+# Invoked after all tests of the prober Pod has been completed and immediately
+# before the prober Pod is deleted.
+wrap_up() {
+  echo
+}
+
 API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
 
 PODS=$(\
@@ -58,23 +90,19 @@ EOF
 kubectl create -f "$PROBER_MANIFEST" >/dev/null
 while [[ $(kubectl get pod conncheck-prober -o jsonpath='{.status.phase}') != Running ]]; do sleep 1; done
 
-# Read and process a test result from the prober Pod. Each test consists of
-# testing the connectivity to the IP address of a target. A target may be a Pod
-# or node. A test result consists of a JSON object (formatted on a single line)
-# with the following keys:
-#   - test_id:     identifier of the type of test being performed
-#   - target_ip:   IP address of the target 
-#   - target_name: friendly name of the target
-#   - success:     boolean; true if the target could be reached, false if not
-process() {
-  test_result=$1
-  echo "$test_result"
-}
+# Initialise the tests
+tmp=$(kubectl get pod conncheck-prober -o json | jq -r '[.status.podIP,.spec.nodeName,.status.hostIP] | join(",")')
+pod_ip=$(echo "$tmp" | cut -d , -f 1)
+node_name=$(echo "$tmp" | cut -d , -f 2)
+node_ip=$(echo "$tmp" | cut -d , -f 3)
+init "$pod_ip" "$node_name" "$node_ip"
 
-# Read the logs of the prober Pod
+# Process test results
 kubectl logs -f conncheck-prober | while read -r line; do 
   [[ "$line" = EOF ]] && break
-  process "$line"
+  process_test_result "$line"
 done
 
+# Finish the tests
+wrap_up
 kubectl delete pod conncheck-prober --wait=false >/dev/null
