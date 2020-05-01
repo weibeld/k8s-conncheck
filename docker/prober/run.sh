@@ -47,7 +47,7 @@ success=$(is_reachable "$target_ip")
 write "$test_id" "$target_ip" "$target_name" "$success"
 
 # Different node
-test_id=pod-node-local
+test_id=pod-node-remote
 tmp=$(echo "$NODES" | jq -r "map(select(.name!=\"$SELF_NODE\"))[0] | .ip + \",\" + .name")
 target_ip=$(echo "$tmp" | cut -d , -f 1)
 target_name=$(echo "$tmp" | cut -d , -f 2)
