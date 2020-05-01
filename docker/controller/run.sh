@@ -54,6 +54,40 @@ spec:
         valueFrom:
           fieldRef:
            fieldPath: spec.nodeName
+# Job
+#apiVersion: batch/v1
+#kind: Job
+#metadata:
+#  name: conncheck-prober
+#spec:
+#  template:
+#    # Alpha feature: requires TTLAfterFinished feature gate
+#    ttlSecondsAfterFinished: 0
+#    spec:
+#      # Must be Never or OnFailure
+#      restartPolicy: OnFailure 
+#      containers:
+#      - image: weibeld/k8s-conncheck-prober
+#        name: conncheck-prober
+#        imagePullPolicy: Always
+#        #command: ["sleep", "infinity"]
+#        env:
+#          - name: PODS
+#            value: '$PODS'
+#          - name: NODES
+#            value: '$NODES'
+#          - name: SELF_IP
+#            valueFrom:
+#              fieldRef:
+#                fieldPath: status.podIP
+#          - name: SELF_POD
+#            valueFrom:
+#              fieldRef:
+#                fieldPath: metadata.name
+#          - name: SELF_NODE
+#            valueFrom:
+#              fieldRef:
+#                fieldPath: spec.nodeName
 EOF
 
 kubectl create -f "$PROBER_MANIFEST"
