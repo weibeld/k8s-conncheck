@@ -9,14 +9,14 @@ metadata:
   name: conncheck-controller
 rules:
 - apiGroups: [""]
-  resources: [pods, nodes]
   verbs: [list]
+  resources: [pods, nodes]
 - apiGroups: [""]
+  verbs: [create, delete]
   resources: [pods]
-  verbs: [get, create]
 - apiGroups: [""]
-  resources: [pods, pods/log]
   verbs: [get]
+  resources: [pods, pods/log]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

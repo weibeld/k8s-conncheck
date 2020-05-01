@@ -53,3 +53,5 @@ target_ip=$(echo "$tmp" | cut -d , -f 1)
 target_name=$(echo "$tmp" | cut -d , -f 2)
 success=$(is_reachable "$target_ip")
 write "$test_id" "$target_ip" "$target_name" "$success"
+
+echo EOF
