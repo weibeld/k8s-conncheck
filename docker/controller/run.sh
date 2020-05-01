@@ -5,9 +5,9 @@
 #   $2: name of the node on which the prober Pod is running
 #   $3: IP address of the node on which the prober Pod is running
 init() {
-  cat <<EOF
-$(date -Isec) Tests from temporary Pod 'conncheck-prober' ($1) on node '$2' ($3)
-EOF
+  col1="\e[34;1m"
+  col2="\e[97;1m"
+  echo -e "$col1$(date -Isec) ${col2}Connectivity check on Pod conncheck-prober $1 (running on node $2 $3)\e[0m"
 }
 
 # Invoked for each test result that the prober Pod returns (a single test 
@@ -36,17 +36,23 @@ process_test_result() {
   esac
 
   case "$success" in
-    true) icon="\xE2\x9C\x85" ;;
-    false) icon="\xE2\x9D\x8C" ;;
+    true)
+      icon="\xE2\x9C\x85" 
+      color="\e[92;1m"
+      ;;
+    false)
+      icon="\xE2\x9D\x8C"
+      color="\e[31;1m"
+      ;;
   esac
 
-  printf "  $icon $msg ($target_name $target_ip)\n"
+  echo -e "$color  $icon $msg ($target_name $target_ip)\e[0m"
 }
 
 # Invoked after all tests of the prober Pod has been completed and immediately
 # before the prober Pod is deleted.
 wrap_up() {
-  echo
+  :
 }
 
 API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
