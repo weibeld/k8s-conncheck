@@ -22,8 +22,25 @@ EOF
 #   - target_name (string): friendly name of the target
 #   - success (boolean):    whether the target could be reached or not
 process_test_result() {
-  test_result=$1
-  echo "$test_result"
+  test_id=$(echo "$1" | jq -r '.test_id')
+  target_ip=$(echo "$1" | jq -r '.target_ip')
+  target_name=$(echo "$1" | jq -r '.target_name')
+  success=$(echo "$1" | jq -r '.success')
+
+  case "$test_id" in
+    pod-self) msg="To itself" ;;
+    pod-pod-local) msg="To pod on same node" ;;
+    pod-pod-remote) msg="To pod on different node" ;;
+    pod-node-local) msg="To own node" ;;
+    pod-node-remote) msg="To different node" ;;
+  esac
+
+  case "$success" in
+    true) icon="\xE2\x9C\x85" ;;
+    false) icon="\xE2\x9D\x8C" ;;
+  esac
+
+  printf "  $icon $msg ($target_name $target_ip)\n"
 }
 
 # Invoked after all tests of the prober Pod has been completed and immediately
