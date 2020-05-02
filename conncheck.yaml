@@ -45,7 +45,6 @@ spec:
   containers:
   - image: weibeld/k8s-conncheck-controller
     name: conncheck-controller
-    #command: ["sleep", "infinity"]
     imagePullPolicy: Always
     volumeMounts:
       - name: kubelet-conf

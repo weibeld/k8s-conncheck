@@ -115,15 +115,15 @@ spec:
         value: '$pod_topology'
       - name: NODES
         value: '$node_topology'
-      - name: SELF_IP
+      - name: SELF_POD_IP
         valueFrom:
           fieldRef:
            fieldPath: status.podIP
-      - name: SELF_POD
+      - name: SELF_POD_NAME
         valueFrom:
           fieldRef:
             fieldPath: metadata.name
-      - name: SELF_NODE
+      - name: SELF_NODE_NAME
         valueFrom:
           fieldRef:
            fieldPath: spec.nodeName

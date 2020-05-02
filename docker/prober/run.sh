@@ -6,7 +6,7 @@ is_reachable() {
     || echo false
 }
 
-write() {
+write_result() {
   test_id=$1
   target_ip=$2
   target_name=$3
@@ -17,41 +17,41 @@ write() {
 
 # Self
 test_id=pod-self
-target_ip=$SELF_IP
-target_name=$SELF_POD
+target_ip=$SELF_POD_IP
+target_name=$SELF_POD_NAME
 success=$(is_reachable "$target_ip")
-write "$test_id" "$target_ip" "$target_name" "$success"
+write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 # Pod on same node
 test_id=pod-pod-local
-tmp=$(echo "$PODS" | jq -r "map(select(.node==\"$SELF_NODE\"))[0] | .ip + \",\" + .name")
+tmp=$(echo "$PODS" | jq -r "map(select(.node==\"$SELF_NODE_NAME\"))[0] | .ip + \",\" + .name")
 target_ip=$(echo "$tmp" | cut -d , -f 1)
 target_name=$(echo "$tmp" | cut -d , -f 2)
 success=$(is_reachable "$target_ip")
-write "$test_id" "$target_ip" "$target_name" "$success"
+write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 # Pod on different node
 test_id=pod-pod-remote
-tmp=$(echo "$PODS" | jq -r "map(select(.node!=\"$SELF_NODE\"))[0] | .ip + \",\" + .name")
+tmp=$(echo "$PODS" | jq -r "map(select(.node!=\"$SELF_NODE_NAME\"))[0] | .ip + \",\" + .name")
 target_ip=$(echo "$tmp" | cut -d , -f 1)
 target_name=$(echo "$tmp" | cut -d , -f 2)
 success=$(is_reachable "$target_ip")
-write "$test_id" "$target_ip" "$target_name" "$success"
+write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 # Same node
 test_id=pod-node-local
-tmp=$(echo "$NODES" | jq -r "map(select(.name==\"$SELF_NODE\"))[0] | .ip + \",\" + .name")
+tmp=$(echo "$NODES" | jq -r "map(select(.name==\"$SELF_NODE_NAME\"))[0] | .ip + \",\" + .name")
 target_ip=$(echo "$tmp" | cut -d , -f 1)
 target_name=$(echo "$tmp" | cut -d , -f 2)
 success=$(is_reachable "$target_ip")
-write "$test_id" "$target_ip" "$target_name" "$success"
+write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 # Different node
 test_id=pod-node-remote
-tmp=$(echo "$NODES" | jq -r "map(select(.name!=\"$SELF_NODE\"))[0] | .ip + \",\" + .name")
+tmp=$(echo "$NODES" | jq -r "map(select(.name!=\"$SELF_NODE_NAME\"))[0] | .ip + \",\" + .name")
 target_ip=$(echo "$tmp" | cut -d , -f 1)
 target_name=$(echo "$tmp" | cut -d , -f 2)
 success=$(is_reachable "$target_ip")
-write "$test_id" "$target_ip" "$target_name" "$success"
+write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 echo EOF
