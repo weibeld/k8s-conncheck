@@ -2,6 +2,24 @@
 
 set -e
 
+API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
+
+# kubectl wrapper function with connection flags. By default, kubectl connects
+# to to the API server through the IP address in $KUBERNETES_SERVICE_HOST and
+# uses the below well-known locations for the authentication token and CA cert.
+# However, $KUBERNETES_SERVICE_HOST contains the IP address of the "kubernetes"
+# Service, and conncheck should not assume that Service networking is working.
+# For that reason, conncheck specifies the proper IP address of the API server
+# in the --server flag, and if this flag is set, the authentication token and
+# CA cert also have to be specified explicitly with the corresponding flags.
+kubectlw() {
+  kubectl \
+    --server "$API_SERVER" \
+    --certificate-authority /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+    --token "$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+    "$@"
+}
+
 # Helper function for printing a line consisting of a timestamp and message
 log() {
   color_ts="\e[94;1m"
@@ -36,7 +54,7 @@ process_test_result() {
   success=$(echo "$1" | jq -r '.success')
 
   case "$test_id" in
-    pod-self) msg="To itself" ;;
+    pod-self) msg="To self" ;;
     pod-pod-local) msg="To pod on same node" ;;
     pod-pod-remote) msg="To pod on different node" ;;
     pod-node-local) msg="To own node" ;;
@@ -65,38 +83,15 @@ finalize() {
 
 log "Initialising..."
 
-API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
-
-# kubectl wrapper function with default connection flags
-mykubectl() {
-  kubectl \
-    --server "$API_SERVER" \
-    --certificate-authority /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-    --token "$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-    "$@"
-}
-
 # Wait until all target Pods are running
-while ! daemonset=$(mykubectl get daemonset conncheck-target -o json) ||
+while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
   [[ "$(echo "$daemonset" | jq '.status.numberReady')" -ne "$(echo "$daemonset" | jq '.status.desiredNumberScheduled')" ]]; do
   sleep 1
 done
 
-PODS=$(\
-  mykubectl \
-    --selector app=conncheck-target \
-    --output json \
-    get pods |
-    jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]' \
-)
-
-# TODO: restrict nodes to worker nodes
-NODES=$(\
-  mykubectl \
-    --output json \
-    get nodes |
-    jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]' \
-)
+# Query cluster topology
+PODS=$(kubectlw -l app=conncheck-target -o json get pods | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
+NODES=$(kubectlw -o json get nodes | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
 
 PROBER_MANIFEST=$(mktemp)
 cat <<EOF >$PROBER_MANIFEST
@@ -151,13 +146,13 @@ for run in pod_network host_network; do
 
   # Create prober Pod
   log "Creating Pod \"$pod_name\" in $msg..."
-  mykubectl create -f "$PROBER_MANIFEST" >/dev/null
+  kubectlw create -f "$PROBER_MANIFEST" >/dev/null
 
   # Wait until prober Pod is running
-  while [[ $(mykubectl get pod "$pod_name" -o jsonpath='{.status.phase}') != Running ]]; do sleep 1; done
+  while [[ $(kubectlw get pod "$pod_name" -o jsonpath='{.status.phase}') != Running ]]; do sleep 1; done
 
   # Query details of prober Pod
-  tmp=$(mykubectl get pod "$pod_name" -o json | jq -r '[.status.podIP,.spec.nodeName,.status.hostIP] | join(",")')
+  tmp=$(kubectlw get pod "$pod_name" -o json | jq -r '[.status.podIP,.spec.nodeName,.status.hostIP] | join(",")')
   pod_ip=$(echo "$tmp" | cut -d , -f 1)
   node_name=$(echo "$tmp" | cut -d , -f 2)
   node_ip=$(echo "$tmp" | cut -d , -f 3)
@@ -167,7 +162,7 @@ for run in pod_network host_network; do
   init "$pod_name" "$pod_ip" "$node_name" "$node_ip"
 
   # Read test results from prober Pod and invoke 'process_test_result' callbacks
-  mykubectl logs -f "$pod_name" | while read -r line; do 
+  kubectlw logs -f "$pod_name" | while read -r line; do 
     [[ "$line" = EOF ]] && break
     process_test_result "$line"
   done
@@ -177,6 +172,6 @@ for run in pod_network host_network; do
 
   # Delete prober Pod
   log "Deleting Pod \"$pod_name\""
-  mykubectl delete pod "$pod_name" --wait=false >/dev/null
+  kubectlw delete pod "$pod_name" --wait=false >/dev/null
 
 done
