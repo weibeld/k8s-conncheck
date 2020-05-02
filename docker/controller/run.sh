@@ -2,7 +2,8 @@
 
 set -e
 
-API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
+# Read URL of the API server from the kubelet's kubeconfig file
+api_server_url=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
 
 # kubectl wrapper function with connection flags. By default, kubectl connects
 # to to the API server through the IP address in $KUBERNETES_SERVICE_HOST and
@@ -14,13 +15,13 @@ API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
 # CA cert also have to be specified explicitly with the corresponding flags.
 kubectlw() {
   kubectl \
-    --server "$API_SERVER" \
+    --server "$api_server_url" \
     --certificate-authority /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
     --token "$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
     "$@"
 }
 
-# Helper function for printing a line consisting of a timestamp and message
+# Helper function for printing a log line consisting of a timestamp and message
 log() {
   color_ts="\e[94;1m"
   color_msg="\e[;1m"
@@ -81,6 +82,10 @@ finalize() {
   :
 }
 
+#==============================================================================#
+# Begin of execution
+#==============================================================================#
+
 log "Initialising..."
 
 # Wait until all target Pods are running
@@ -90,11 +95,11 @@ while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
 done
 
 # Query cluster topology
-PODS=$(kubectlw -l app=conncheck-target -o json get pods | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
-NODES=$(kubectlw -o json get nodes | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
+pod_topology=$(kubectlw -l "app=conncheck-target" -o json get pods | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
+node_topology=$(kubectlw -o json get nodes | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
 
-PROBER_MANIFEST=$(mktemp)
-cat <<EOF >$PROBER_MANIFEST
+pod_manifest=$(mktemp)
+cat <<EOF >$pod_manifest
 apiVersion: v1
 kind: Pod
 metadata:
@@ -105,12 +110,11 @@ spec:
   - image: weibeld/k8s-conncheck-prober
     name: k8s-conncheck-prober
     imagePullPolicy: Always
-    #command: ["sleep", "infinity"]
     env:
       - name: PODS
-        value: '$PODS'
+        value: '$pod_topology'
       - name: NODES
-        value: '$NODES'
+        value: '$node_topology'
       - name: SELF_IP
         valueFrom:
           fieldRef:
@@ -125,6 +129,7 @@ spec:
            fieldPath: spec.nodeName
 EOF
 
+# Run two prober Pods: one in the Pod network and one in the host network
 for run in pod_network host_network; do
 
   case "$run" in
@@ -141,12 +146,12 @@ for run in pod_network host_network; do
   esac
 
   # Adapt prober Pod manifest
-  yq write -i "$PROBER_MANIFEST" metadata.name "$pod_name"
-  yq write -i "$PROBER_MANIFEST" spec.hostNetwork "$is_host_network"
+  yq write -i "$pod_manifest" metadata.name "$pod_name"
+  yq write -i "$pod_manifest" spec.hostNetwork "$is_host_network"
 
   # Create prober Pod
   log "Creating Pod \"$pod_name\" in $msg..."
-  kubectlw create -f "$PROBER_MANIFEST" >/dev/null
+  kubectlw create -f "$pod_manifest" >/dev/null
 
   # Wait until prober Pod is running
   while [[ $(kubectlw get pod "$pod_name" -o jsonpath='{.status.phase}') != Running ]]; do sleep 1; done
@@ -156,7 +161,7 @@ for run in pod_network host_network; do
   pod_ip=$(echo "$tmp" | cut -d , -f 1)
   node_name=$(echo "$tmp" | cut -d , -f 2)
   node_ip=$(echo "$tmp" | cut -d , -f 3)
-  log "Running checks on Pod \"$pod_name\" $pod_ip (running on node \"$node_name\" $node_ip)"
+  log "Running tests on Pod \"$pod_name\" $pod_ip (running on node \"$node_name\" $node_ip)"
 
   # Invoke 'init' callback
   init "$pod_name" "$pod_ip" "$node_name" "$node_ip"
