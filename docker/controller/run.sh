@@ -1,24 +1,31 @@
 #!/bin/sh
 
-# Invoked before the tests of a prober Pod start. Receives the following args:
+set -e
+
+# Helper function for printing a line consisting of a timestamp and message
+log() {
+  color_ts="\e[94;1m"
+  color_msg="\e[;1m"
+  echo -e "$color_ts$(date -Isec) $color_msg$1\e[0m"
+}
+
+# Invoked after the start of a prober Pod before the first test result is read.
+# Receives the following args:
 #   $1: name of the prober Pod
 #   $2: IP address of the prober Pod
 #   $3: name of the node on which the prober Pod is running
 #   $4: IP address of the node on which the prober Pod is running
 init() {
-  color1="\e[94;1m"
-  color2="\e[97;1m"
-  echo -e "$color1$(date -Isec) ${color2}Connectivity check on Pod $1 $2 (running on node $3 $4)\e[0m"
+  :
 }
 
-# Invoked for each test result that the prober Pod returns (a single test 
-# consists of pinging a target and testing connectivity; a target may be a Pod
-# or a node; a prober Pod performs a sequence of such tests). Receives the
-# following argument:
+# Invoked for each test result of a prober Pod (a test consists of pinging
+# a target; a target may be a Pod or a node; a prober Pod performs a sequence
+# of tests with different targets). Receives the following args:
 #   $1: test result
 # The test result is a JSON object (formatted as a single line) with the
 # following fields:
-#   - test_id (string):     identifier of the test being performed
+#   - test_id (string):     identifier of the type of test being performed
 #   - target_ip (string):   IP address of the target 
 #   - target_name (string): friendly name of the target
 #   - success (boolean):    whether the target could be reached or not
@@ -47,16 +54,16 @@ process_test_result() {
       ;;
   esac
 
-  echo -e "$color  $icon $msg ($target_name $target_ip)\e[0m"
+  echo -e "$color  $icon $msg (\"$target_name\" $target_ip)\e[0m"
 }
 
-# Invoked after all tests of the prober Pod has been completed and immediately
-# before the prober Pod is deleted.
-finish() {
+# Invoked after all tests of a prober Pod have been completed before the prober
+# Pod is deleted. Receives no arguments.
+finalize() {
   :
 }
 
-echo "Initialising..."
+log "Initialising..."
 
 API_SERVER=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
 
@@ -125,41 +132,51 @@ EOF
 
 for run in pod_network host_network; do
 
-  # Adapt prober Pod manifest
   case "$run" in
     pod_network)
       pod_name=conncheck-prober
       is_host_network=false
+      msg="Pod network"
       ;;
     host_network)
       pod_name=conncheck-prober-host
       is_host_network=true
+      msg="host network"
       ;;
   esac
+
+  # Adapt prober Pod manifest
   yq write -i "$PROBER_MANIFEST" metadata.name "$pod_name"
   yq write -i "$PROBER_MANIFEST" spec.hostNetwork "$is_host_network"
 
-  # Run prober Pod
+  # Create prober Pod
+  log "Creating Pod \"$pod_name\" in $msg..."
   mykubectl create -f "$PROBER_MANIFEST" >/dev/null
+
+  # Wait until prober Pod is running
   while [[ $(mykubectl get pod "$pod_name" -o jsonpath='{.status.phase}') != Running ]]; do sleep 1; done
 
-  # Invoke 'init' callback
+  # Query details of prober Pod
   tmp=$(mykubectl get pod "$pod_name" -o json | jq -r '[.status.podIP,.spec.nodeName,.status.hostIP] | join(",")')
   pod_ip=$(echo "$tmp" | cut -d , -f 1)
   node_name=$(echo "$tmp" | cut -d , -f 2)
   node_ip=$(echo "$tmp" | cut -d , -f 3)
+  log "Running checks on Pod \"$pod_name\" $pod_ip (running on node \"$node_name\" $node_ip)"
+
+  # Invoke 'init' callback
   init "$pod_name" "$pod_ip" "$node_name" "$node_ip"
 
-  # Read test results from prober Pod and invoke 'process_test_result' callback
+  # Read test results from prober Pod and invoke 'process_test_result' callbacks
   mykubectl logs -f "$pod_name" | while read -r line; do 
     [[ "$line" = EOF ]] && break
     process_test_result "$line"
   done
 
-  # Invoke 'finish' callback
-  finish
+  # Invoke 'finalize' callback
+  finalize
+
+  # Delete prober Pod
+  log "Deleting Pod \"$pod_name\""
   mykubectl delete pod "$pod_name" --wait=false >/dev/null
 
 done
-
-# Sleep
