@@ -153,8 +153,8 @@ for run in pod_network host_network; do
   log "Creating Pod \"$pod_name\" in $msg..."
   kubectlw create -f "$pod_manifest" >/dev/null
 
-  # Wait until prober Pod is running
-  while [[ $(kubectlw get pod "$pod_name" -o jsonpath='{.status.phase}') != Running ]]; do sleep 1; done
+  # Wait until prober Pod has started
+  while [[ "$(kubectlw get pod "$pod_name" -o jsonpath='{.status.phase}')" == Pending ]]; do sleep 1; done
 
   # Query details of prober Pod
   tmp=$(kubectlw get pod "$pod_name" -o json | jq -r '[.status.podIP,.spec.nodeName,.status.hostIP] | join(",")')
