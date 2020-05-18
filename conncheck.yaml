@@ -1,7 +1,13 @@
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: conncheck
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: conncheck-controller
+  namespace: conncheck
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -32,12 +38,13 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: conncheck-controller
-  namespace: default
+  namespace: conncheck
 ---
 apiVersion: v1
 kind: Pod
 metadata:
   name: conncheck-controller
+  namespace: conncheck
 spec:
   hostNetwork: true
   restartPolicy: Never
@@ -59,6 +66,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: conncheck-target
+  namespace: conncheck
 spec:
   selector:
     matchLabels:
