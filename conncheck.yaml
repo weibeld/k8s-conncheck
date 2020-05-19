@@ -65,7 +65,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: conncheck-target-service
+  name: conncheck-service
   namespace: conncheck
 spec:
   selector:
