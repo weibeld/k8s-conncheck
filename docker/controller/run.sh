@@ -60,6 +60,7 @@ process_test_result() {
     pod-pod-remote) msg="To pod on different node" ;;
     pod-node-local) msg="To own node" ;;
     pod-node-remote) msg="To different node" ;;
+    pod-service) msg="To service" ;;
   esac
 
   case "$success" in
@@ -131,8 +132,6 @@ spec:
           fieldRef:
            fieldPath: spec.nodeName
 EOF
-
-cat "$pod_manifest"
 
 # Run two prober Pods: one in the Pod network and one in the host network
 for run in pod_network host_network; do
