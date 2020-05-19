@@ -77,6 +77,5 @@ spec:
         app: conncheck-target
     spec:
       containers:
-      - image: alpine
-        name: alpine
-        command: ["sleep", "infinity"]
+      - image: weibeld/k8s-conncheck-target
+        name: conncheck-target
