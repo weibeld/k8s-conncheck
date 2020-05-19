@@ -62,6 +62,18 @@ spec:
         path: /etc/kubernetes/kubelet.conf
         type: File
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: conncheck-target-service
+  namespace: conncheck
+spec:
+  selector:
+    app: conncheck-target
+  ports:
+  - port: 1024
+    targetPort: 1024
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
