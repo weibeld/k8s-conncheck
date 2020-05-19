@@ -95,8 +95,9 @@ while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
 done
 
 # Query cluster topology
-pod_topology=$(kubectlw -l "app=conncheck-target" -o json get pods | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
-node_topology=$(kubectlw -o json get nodes | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
+pod_topology=$(kubectlw get pods -l "app=conncheck-target" -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
+node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
+service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
 
 pod_manifest=$(mktemp)
 cat <<EOF >$pod_manifest
@@ -115,6 +116,8 @@ spec:
         value: '$pod_topology'
       - name: NODES
         value: '$node_topology'
+      - name: SERVICE
+        value: '$service_topology'
       - name: SELF_POD_IP
         valueFrom:
           fieldRef:
@@ -128,6 +131,8 @@ spec:
           fieldRef:
            fieldPath: spec.nodeName
 EOF
+
+cat "$pod_manifest"
 
 # Run two prober Pods: one in the Pod network and one in the host network
 for run in pod_network host_network; do
