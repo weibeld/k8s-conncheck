@@ -92,3 +92,5 @@ icmp "$target_ip" && success=true || success=false
 write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 echo EOF
+
+sleep infinity

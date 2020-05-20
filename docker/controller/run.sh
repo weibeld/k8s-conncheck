@@ -81,8 +81,7 @@ process_test_result() {
   echo -e "$color  $icon $msg (\"$target_name\"$sep$target_ip)\e[0m"
 }
 
-# Invoked after all tests of a prober Pod have been completed before the prober
-# Pod is deleted. Receives no arguments.
+# Invoked after all tests of a prober Pod have been completed. Receives no args.
 finalize() {
   :
 }
@@ -180,10 +179,6 @@ for run in pod_network host_network; do
 
   # Invoke 'finalize' callback
   finalize
-
-  # Delete prober Pod
-  log "Deleting Pod \"$pod_name\""
-  kubectlw delete pod "$pod_name" --wait=false >/dev/null
 
 done
 
