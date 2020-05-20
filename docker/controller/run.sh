@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+#set -e
 
 # Read URL of the API server from the kubelet's kubeconfig file
 api_server_url=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
@@ -170,8 +170,11 @@ for run in pod_network host_network; do
   init "$pod_name" "$pod_ip" "$node_name" "$node_ip"
 
   # Read test results from prober Pod and invoke 'process_test_result' callbacks
-  kubectlw logs -f "$pod_name" | while read -r line; do 
-    [[ "$line" = EOF ]] && break
+  kubectlw logs -f "$pod_name" 2>/dev/null | while read -r line; do 
+    if [[ "$line" = EOF ]]; then
+      pkill kubectl  # Requires 'set -e' to NOT be set
+      break
+    fi
     process_test_result "$line"
   done
 
@@ -183,3 +186,5 @@ for run in pod_network host_network; do
   kubectlw delete pod "$pod_name" --wait=false >/dev/null
 
 done
+
+sleep infinity
