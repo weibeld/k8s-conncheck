@@ -1,2 +1,5 @@
 #!/bin/bash
-docker push weibeld/k8s-conncheck-"$1"
+
+for i in "$@"; do
+  docker push weibeld/k8s-conncheck-"$i"
+done

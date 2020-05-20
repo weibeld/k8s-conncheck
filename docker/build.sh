@@ -1,2 +1,6 @@
 #!/bin/bash
-docker build -t weibeld/k8s-conncheck-"$1" "$(dirname "${BASH_SOURCE[0]}")/$1"
+
+for i in "$@"; do
+  docker build -t weibeld/k8s-conncheck-"$i" "$(dirname "${BASH_SOURCE[0]}")/$i"
+done
+
