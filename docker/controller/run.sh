@@ -61,6 +61,8 @@ process_test_result() {
     pod-node-local) msg="To own node" ;;
     pod-node-remote) msg="To different node" ;;
     pod-service) msg="To service" ;;
+    dns-internal) msg="DNS resolution of internal name" ;;
+    dns-external) msg="DNS resolution of external name" ;;
   esac
 
   case "$success" in
@@ -74,7 +76,8 @@ process_test_result() {
       ;;
   esac
 
-  echo -e "$color  $icon $msg (\"$target_name\" $target_ip)\e[0m"
+  [[ -n "$target_ip" ]] && sep=" " || sep=""
+  echo -e "$color  $icon $msg (\"$target_name\"$sep$target_ip)\e[0m"
 }
 
 # Invoked after all tests of a prober Pod have been completed before the prober
@@ -105,7 +108,6 @@ cat <<EOF >$pod_manifest
 apiVersion: v1
 kind: Pod
 metadata:
-  name: placeholder
 spec:
   restartPolicy: OnFailure
   containers:
@@ -139,22 +141,18 @@ for run in pod_network host_network; do
   case "$run" in
     pod_network)
       pod_name=conncheck-prober
-      is_host_network=false
-      msg="Pod network"
+      yq write -i "$pod_manifest" metadata.name "$pod_name"
       ;;
     host_network)
-      pod_name=conncheck-prober-host
-      is_host_network=true
-      msg="host network"
+      pod_name=conncheck-prober-host-network
+      yq write -i "$pod_manifest" metadata.name "$pod_name"
+      yq write -i "$pod_manifest" spec.hostNetwork true
+      yq write -i "$pod_manifest" spec.dnsPolicy ClusterFirstWithHostNet
       ;;
   esac
 
-  # Adapt prober Pod manifest
-  yq write -i "$pod_manifest" metadata.name "$pod_name"
-  yq write -i "$pod_manifest" spec.hostNetwork "$is_host_network"
-
   # Create prober Pod
-  log "Creating Pod \"$pod_name\" in $msg..."
+  log "Creating Pod \"$pod_name\"..."
   kubectlw create -f "$pod_manifest" >/dev/null
 
   # Wait until prober Pod has started

@@ -2,13 +2,18 @@
 
 icmp() {
   ip=$1
-  ping -q -c 1 -t 3 "$ip" 1>/dev/null 2>/dev/null
+  ping -q -c 1 -t 3 "$ip" 1>/dev/null 2>&1
 }
 
 tcp() {
   ip=$1
   port=$2
-  nc -z -w 3 "$ip" "$port" 1>/dev/null 2>/dev/null
+  nc -z -w 3 "$ip" "$port" 1>/dev/null 2>&1
+}
+
+dns() {
+  name=$1
+  nslookup "$name" 1>/dev/null 2>&1
 }
 
 write_result() {
@@ -58,12 +63,24 @@ target_name=$(echo "$tmp" | cut -d , -f 2)
 icmp "$target_ip" && success=true || success=false
 write_result "$test_id" "$target_ip" "$target_name" "$success"
 
-# Pod via Service
+# Service
 test_id=pod-service
 target_ip=$(echo "$SERVICE" | jq -r .ip)
 target_port=$(echo "$SERVICE" | jq -r .port)
 target_name=$(echo "$SERVICE" | jq -r .name)
 tcp "$target_ip" "$target_port" && success=true || success=false
 write_result "$test_id" "$target_ip" "$target_name" "$success"
+
+# Internal DNS
+test_id=dns-internal
+target_name=$(echo "$SERVICE" | jq -r .name)
+dns "$target_name" && success=true || success=false
+write_result "$test_id" "" "$target_name" "$success"
+
+# External DNS
+test_id=dns-external
+target_name=kubernetes.io
+dns "$target_name" && success=true || success=false
+write_result "$test_id" "" "$target_name" "$success"
 
 echo EOF
