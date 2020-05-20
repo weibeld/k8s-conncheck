@@ -2,7 +2,8 @@
 
 icmp() {
   ip=$1
-  ping -q -c 1 -t 3 "$ip" 1>/dev/null 2>&1
+  # If using the -t option, the requests fail when pining a host in the internet
+  ping -c 1 "$ip" 1>/dev/null 2>&1
 }
 
 tcp() {
@@ -82,5 +83,12 @@ test_id=dns-external
 target_name=kubernetes.io
 dns "$target_name" && success=true || success=false
 write_result "$test_id" "" "$target_name" "$success"
+
+# Internet
+test_id=internet
+target_name=a.root-servers.net
+target_ip=198.41.0.4
+icmp "$target_ip" && success=true || success=false
+write_result "$test_id" "$target_ip" "$target_name" "$success"
 
 echo EOF

@@ -63,6 +63,7 @@ process_test_result() {
     pod-service) msg="To service" ;;
     dns-internal) msg="DNS resolution of internal name" ;;
     dns-external) msg="DNS resolution of external name" ;;
+    internet) msg="To internet"
   esac
 
   case "$success" in
