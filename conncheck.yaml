@@ -17,7 +17,7 @@ rules:
 - verbs: [list]
   resources: [pods, nodes]
   apiGroups: [""]
-- verbs: [create]
+- verbs: [create, get, patch]
   resources: [deployments]
   apiGroups: ["apps"]
 - verbs: [get]
@@ -65,6 +65,72 @@ spec:
       hostPath:
         path: /etc/kubernetes/kubelet.conf
         type: File
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conncheck-prober
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prober
+  template:
+    metadata:
+      labels:
+        app: prober
+    spec:
+      containers:
+      - image: weibeld/k8s-conncheck-prober
+        name: k8s-conncheck-prober
+        imagePullPolicy: Always
+        env:
+          - name: SELF_POD_IP
+            valueFrom:
+              fieldRef:
+               fieldPath: status.podIP
+          - name: SELF_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: SELF_NODE_NAME
+            valueFrom:
+              fieldRef:
+               fieldPath: spec.nodeName
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conncheck-prober-host-network
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prober-host-network
+  template:
+    metadata:
+      labels:
+        app: prober-host-network
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - image: weibeld/k8s-conncheck-prober
+        name: k8s-conncheck-prober
+        imagePullPolicy: Always
+        env:
+          - name: SELF_POD_IP
+            valueFrom:
+              fieldRef:
+               fieldPath: status.podIP
+          - name: SELF_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: SELF_NODE_NAME
+            valueFrom:
+              fieldRef:
+               fieldPath: spec.nodeName
 ---
 apiVersion: v1
 kind: Service

@@ -98,51 +98,12 @@ while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
   sleep 1
 done
 
+# TODO: wait until prober Pods are running
+
 # Query cluster topology
 pod_topology=$(kubectlw get pods -l "app=conncheck-target" -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
 node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
 service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
-
-manifest=$(mktemp)
-cat <<EOF >$manifest
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: PLACEHOLDER
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: PLACEHOLDER
-  template:
-    metadata:
-      labels:
-        app: PLACEHOLDER
-    spec:
-      containers:
-      - image: weibeld/k8s-conncheck-prober
-        name: k8s-conncheck-prober
-        imagePullPolicy: Always
-        env:
-          - name: PODS
-            value: '$pod_topology'
-          - name: NODES
-            value: '$node_topology'
-          - name: SERVICE
-            value: '$service_topology'
-          - name: SELF_POD_IP
-            valueFrom:
-              fieldRef:
-               fieldPath: status.podIP
-          - name: SELF_POD_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
-          - name: SELF_NODE_NAME
-            valueFrom:
-              fieldRef:
-               fieldPath: spec.nodeName
-EOF
 
 # Run two prober Deployments: one in the Pod network and one in the host network
 for run in pod_network host_network; do
@@ -150,55 +111,61 @@ for run in pod_network host_network; do
   case "$run" in
     pod_network)
       deployment_name=conncheck-prober
-      pod_label_name=prober
-      yq write -i "$manifest" metadata.name "$deployment_name"
-      yq write -i "$manifest" spec.selector.matchLabels.app "$pod_label_name"
-      yq write -i "$manifest" spec.template.metadata.labels.app "$pod_label_name"
+      pod_label_key=app
+      pod_label_value=prober
       ;;
     host_network)
       deployment_name=conncheck-prober-host-network
-      pod_label_name=prober-host-network
-      yq write -i "$manifest" metadata.name "$deployment_name"
-      yq write -i "$manifest" spec.selector.matchLabels.app "$pod_label_name"
-      yq write -i "$manifest" spec.template.metadata.labels.app "$pod_label_name"
-      yq write -i "$manifest" spec.template.spec.hostNetwork true
-      yq write -i "$manifest" spec.template.spec.dnsPolicy ClusterFirstWithHostNet
+      pod_label_key=app
+      pod_label_value=prober-host-network
       ;;
   esac
 
-  # Create prober Deployment
-  log "Creating Deployment \"$deployment_name\"..."
-  kubectlw create -f "$manifest" >/dev/null
+  # Name of currently running prober Pod
+  old_pod=$(kubectlw get pods -l "$pod_label_key"="$pod_label_value" -o json | jq -r '.items[0].metadata.name')
 
-  # Wait until prober Pod has started
+  # Patch Pod template of Deployment with topology information (restarts Pod)
+  log "Patching \"$deployment_name\"..."
+  patch=$(cat <<EOF
+spec:
+  template:
+    spec:
+      containers:
+        - name: k8s-conncheck-prober
+          env:
+            - name: PODS
+              value: '$pod_topology'
+            - name: NODES
+              value: '$node_topology'
+            - name: SERVICE 
+              value: '$service_topology'
+EOF
+)
+  kubectlw patch deployment "$deployment_name" -p "$patch" >/dev/null
+
+  # Get name of the newly created Pod
   while true; do
-    result=$(kubectlw get pod -l app="$pod_label_name" -o json)
-    if [[ $(echo "$result" | jq '.items | length') = 0 ]]; then
-      sleep 1
-      continue
-    elif [[ $(echo "$result" | jq -r '.items[0].status.phase') = Pending ]]; then
-      sleep 1
-      continue
-    fi
-    pod_name=$(echo "$result" | jq -r '.items[0].metadata.name')
-    break
+    pod_name=$(kubectlw get pods -l "$pod_label_key"="$pod_label_value" -o json | jq -r ".items[] | select(.metadata.name!=\"$old_pod\") | .metadata.name")
+    [[ -n "$pod_name" ]] && break || sleep 1
   done
-  #while [[ "$(kubectlw get pod "$deployment_name" -o jsonpath='{.status.phase}')" == Pending ]]; do sleep 1; done
 
-  # Query details of prober Pod
-  tmp=$(kubectlw get pod "$pod_name" -o json | jq -r '[.status.podIP,.spec.nodeName,.status.hostIP] | join(",")')
-  pod_ip=$(echo "$tmp" | cut -d , -f 1)
-  node_name=$(echo "$tmp" | cut -d , -f 2)
-  node_ip=$(echo "$tmp" | cut -d , -f 3)
-  log "Running tests on Pod \"$pod_name\" $pod_ip (running on node \"$node_name\" $node_ip)"
+  # Wait until the new Pod is running 
+  while [[ "$(kubectlw get pod "$pod_name" -o jsonpath='{.status.phase}')" != Running ]]; do sleep 1; done
+
+  # Query details of the new Pod
+  pod_manifest=$(kubectlw get pod "$pod_name" -o json)
+  pod_ip=$(echo "$pod_manifest" | jq -r '.status.podIP')
+  node_name=$(echo "$pod_manifest" | jq -r '.spec.nodeName')
+  node_ip=$(echo "$pod_manifest" | jq -r '.status.hostIP')
+  log "Running tests on Pod \"$pod_name\" $pod_ip (node \"$node_name\" $node_ip)"
 
   # Invoke 'init' callback
   init "$pod_name" "$pod_ip" "$node_name" "$node_ip"
 
-  # Read test results from prober Pod and invoke 'process_test_result' callbacks
+  # Read test results from Pod and invoke 'process_test_result' callbacks
   kubectlw logs -f "$pod_name" 2>/dev/null | while read -r line; do 
     if [[ "$line" = EOF ]]; then
-      pkill kubectl  # Requires 'set -e' to NOT be set
+      pkill kubectl  # Caution: if 'set -e' is set, this causes script to exit
       break
     fi
     process_test_result "$line"
