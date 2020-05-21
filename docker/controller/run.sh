@@ -3,7 +3,7 @@
 #set -e
 
 log() {
-  echo -e "\e[94;1m$(date -Isec)\e[0m $@"
+  echo -e "\e[94;1m$(date +'%Y/%m/%d-%H:%M:%S-%Z')\e[0m $@"
 }
 
 # Read URL of the API server from the kubelet's kubeconfig file
