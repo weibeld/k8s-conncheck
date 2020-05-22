@@ -3,6 +3,9 @@ FROM alpine:3.11
 # Install jq
 RUN apk add jq
 
+# Install iptables
+RUN apk add iptables
+
 # Install yq
 RUN wget -q -O /usr/bin/yq "$(wget -q -O - https://api.github.com/repos/mikefarah/yq/releases/latest | jq -r '.assets[] | select(.name == "yq_linux_amd64") | .browser_download_url')" && chmod +x /usr/bin/yq
 

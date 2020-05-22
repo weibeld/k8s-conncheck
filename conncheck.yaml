@@ -16,7 +16,7 @@ metadata:
 rules:
 - verbs: [get]
   resources: [daemonsets]
-  apiGroups: ["apps"]
+  apiGroups: ["apps", "extensions"]
 - verbs: [list]
   resources: [pods, nodes]
   apiGroups: [""]
@@ -54,14 +54,8 @@ spec:
   - image: weibeld/k8s-conncheck-controller
     name: conncheck-controller
     imagePullPolicy: Always
-    volumeMounts:
-      - name: kubelet-conf
-        mountPath: /etc/kubernetes/kubelet.conf
-  volumes:
-    - name: kubelet-conf
-      hostPath:
-        path: /etc/kubernetes/kubelet.conf
-        type: File
+    securityContext:
+      privileged: true
 ---
 apiVersion: v1
 kind: Service

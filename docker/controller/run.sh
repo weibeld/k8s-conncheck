@@ -7,19 +7,30 @@ log() {
 }
 
 # Read URL of the API server from the kubelet's kubeconfig file
-api_server_url=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
+#api_server_url=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
 
-# kubectl wrapper function with connection flags. By default, kubectl connects
-# to to the API server through the IP address in $KUBERNETES_SERVICE_HOST and
-# uses the below well-known locations for the authentication token and CA cert.
-# However, $KUBERNETES_SERVICE_HOST contains the IP address of the "kubernetes"
-# Service, and conncheck should not assume that Service networking is working.
-# For that reason, conncheck specifies the proper IP address of the API server
-# in the --server flag, and if this flag is set, the authentication token and
-# CA cert also have to be specified explicitly with the corresponding flags.
+# Extract IP address (and port) of the API server from the iptables rules for
+# the "default/kubernetes" Service. Accessing iptables requires the container
+# to run in privileged mode. This works only if kube-proxy uses the 'iptables'
+# proxy mode (i.e. not with the IPVS proxy mode), but this is NOT YET TESTED.
+service=$(iptables -t nat -L KUBE-SERVICES | grep default/kubernetes | grep '^KUBE-SVC' | awk '{print $1}')
+endpoint=$(iptables -t nat -L "$service" | grep '^KUBE-SEP' | head -n 1| awk '{print $1}')
+apiserver_ip=$(iptables -t nat -S "$endpoint" | grep DNAT | awk '{for (i=1;i<=NF;i++) if ($i=="--to-destination") print $(i+1)}')
+apiserver_url=https://"$apiserver_ip"
+
+# Wrapper around kubectl for connecting directly to the API server. By default,
+# kubectl finds out how to connect to the API server with the information in the
+# $KUBERNETES_SERVICE_HOST and $KUBERNETES_SERVICE_PORT environment variables.
+# However, this info corresponds to the "kubernetes" Service in the "default"
+# namespace which exposes the API server. Thus, using this behaviour presumes
+# that Service networking is already working in the cluster, but this is just 
+# what the connectivity checker is supposed to check. For this reason, kubectl
+# must connect directly to the IP address of the API server extracted above,
+# which is specified in the --server  flag below. If the --server flag is set,
+# the --certificate-authority and  --token flags must also be explicitly set.
 kubectlw() {
   kubectl \
-    --server "$api_server_url" \
+    --server "$apiserver_url" \
     --certificate-authority /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
     --token "$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
     "$@"
@@ -96,6 +107,8 @@ for name in conncheck-prober conncheck-prober-hostnet; do
   kubectlw create -f "$template" >/dev/null
 
 done
+
+sleep infinity
  
 #  # Patch Pod template of Deployment with topology information (restarts Pod)
 #  log "Patching \"$deployment_name\"..."
