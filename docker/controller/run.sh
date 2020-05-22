@@ -6,9 +6,6 @@ log() {
   echo -e "\e[94;1m$(date +'%Y/%m/%d-%H:%M:%S-%Z')\e[0m $@"
 }
 
-# Read URL of the API server from the kubelet's kubeconfig file
-#api_server_url=$(yq read /etc/kubernetes/kubelet.conf 'clusters[0].cluster.server')
-
 # Extract IP address (and port) of the API server from the iptables rules for
 # the "default/kubernetes" Service. Accessing iptables requires the container
 # to run in privileged mode. This works only if kube-proxy uses the 'iptables'
@@ -49,63 +46,112 @@ pod_topology=$(kubectlw get pods -l "app=conncheck-target" -o json | jq -c '[.it
 node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
 service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
 
-template=$(mktemp)
-cat <<EOF >$template
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-  template:
-    metadata:
-      labels:
-    spec:
-      containers:
-      - image: weibeld/k8s-conncheck-prober
-        name: k8s-conncheck-prober
-        imagePullPolicy: Always
-        env:
-          - name: PODS
-            value: '$pod_topology'
-          - name: NODES
-            value: '$node_topology'
-          - name: SERVICE
-            value: '$service_topology'
-          - name: SELF_POD_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
-          - name: SELF_POD_IP
-            valueFrom:
-              fieldRef:
-               fieldPath: status.podIP
-          - name: SELF_NODE_NAME
-            valueFrom:
-              fieldRef:
-               fieldPath: spec.nodeName
-          - name: SELF_NODE_IP
-            valueFrom:
-              fieldRef:
-               fieldPath: status.hostIP
-EOF
+manifest='
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": null
+  },
+  "spec": {
+    "replicas": 1,
+    "selector": {
+      "matchLabels": {
+        "app": null
+      }
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "app": null
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "image": "weibeld/k8s-conncheck-prober",
+            "name": "k8s-conncheck-prober",
+            "imagePullPolicy": "Always",
+            "env": [
+              {
+                "name": "PODS",
+                "value": null
+              },
+              {
+                "name": "NODES",
+                "value": null
+              },
+              {
+                "name": "SERVICE",
+                "value": null
+              },
+              {
+                "name": "SELF_POD_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.name"
+                  }
+                }
+              },
+              {
+                "name": "SELF_POD_IP",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "status.podIP"
+                  }
+                }
+              },
+              {
+                "name": "SELF_NODE_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "spec.nodeName"
+                  }
+                }
+              },
+              {
+                "name": "SELF_NODE_IP",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "status.hostIP"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+'
+
+manifest=$(
+  echo "$manifest" |
+  jq --arg var "$pod_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "PODS") | .value) |= $var' |
+  jq --arg var "$node_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "NODES") | .value) |= $var' |
+  jq --arg var "$service_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "SERVICE") | .value) |= $var'
+)
 
 # Run two prober Deployments: one in the Pod network and one in the host network
 for name in conncheck-prober conncheck-prober-hostnet; do
-
-  yq write -i "$template" metadata.name "$name"
-  yq write -i "$template" spec.selector.matchLabels.app "$name"
-  yq write -i "$template" spec.template.metadata.labels.app "$name"
-
+  manifest=$(
+    echo "$manifest" |
+    jq ".metadata.name = \"$name\"" |
+    jq ".spec.selector.matchLabels.app = \"$name\"" |
+    jq ".spec.template.metadata.labels.app = \"$name\""
+  )
   if [[ "$name" = conncheck-prober-hostnet ]]; then
-    yq write -i "$template" spec.template.spec.hostNetwork true
-    yq write -i "$template" spec.template.spec.dnsPolicy ClusterFirstWithHostNet    
+    manifest=$(
+      echo "$manifest" |
+      jq '.spec.template.spec.hostNetwork = true' |
+      jq '.spec.template.spec.dnsPolicy = "ClusterFirstWithHostNet"'
+    )
   fi
+  file=$(mktemp) && echo "$manifest" >"$file"
 
   log "Creating Deployment \"$name\"..."
-  kubectlw create -f "$template" >/dev/null
-
+  kubectlw create -f "$file" >/dev/null
 done
 
 sleep infinity
