@@ -5,11 +5,7 @@
 #------------------------------------------------------------------------------#
 
 log() {
-  echo -ne "\e[94;1m$(date +'%Y/%m/%d-%H:%M:%S-%Z')\e[0m"
-  for a in "$@"; do
-    echo -ne " \e[;1m$a\e[0m"
-  done
-  echo
+  echo -e "\e[94;1m$(date +'%Y/%m/%d-%H:%M:%S-%Z')\e[;1m $@\e[0m"
 }
 
 format_result() {
@@ -31,7 +27,7 @@ format_result() {
 
   [[ -n "$target_ip" ]] && sep=" " || sep=""
 
-  echo -e "$success_color$success_msg\e[0m $description (\"$target_name\"$sep$target_ip)"
+  echo -e "$success_color$success_msg\e[;1m $description (\"$target_name\"$sep$target_ip)"
 }
 
 #------------------------------------------------------------------------------#
@@ -69,7 +65,7 @@ if icmp "$target_ip"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Pod on local node"
 target=$(echo "$PODS" | jq "map(select(.node==\"$SELF_NODE_NAME\")) | first")
@@ -80,7 +76,7 @@ if icmp "$target_ip"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Pod on remote node"
 target=$(echo "$PODS" | jq "map(select(.node!=\"$SELF_NODE_NAME\")) | first")
@@ -91,7 +87,7 @@ if icmp "$target_ip"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Local node"
 target=$(echo "$NODES" | jq "map(select(.name==\"$SELF_NODE_NAME\")) | first")
@@ -102,7 +98,7 @@ if icmp "$target_ip"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Remote node"
 target=$(echo "$NODES" | jq "map(select(.name!=\"$SELF_NODE_NAME\")) | first")
@@ -113,7 +109,7 @@ if icmp "$target_ip"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Service"
 target_ip=$(echo "$SERVICE" | jq -r .ip)
@@ -124,7 +120,7 @@ if tcp "$target_ip" "$target_port"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Internet"
 target_ip=198.41.0.4
@@ -134,7 +130,7 @@ if icmp "$target_ip"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Internal DNS resolution"
 target_ip=""
@@ -144,7 +140,7 @@ if dns "$target_name"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="External DNS resolution"
 target_ip=""
@@ -154,6 +150,6 @@ if dns "$target_name"; then
 else
   success=false
 fi
-log $(format_result "$description" "$target_ip" "$target_name" "$success")
+log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 sleep infinity
