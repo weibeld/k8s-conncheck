@@ -23,7 +23,7 @@ rules:
 - verbs: [get]
   resources: [services]
   apiGroups: [""]
-- verbs: [create]
+- verbs: [create, get, patch]
   resources: [replicasets]
   apiGroups: ["apps"]
 ---

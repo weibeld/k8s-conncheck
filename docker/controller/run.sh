@@ -46,20 +46,30 @@ if ! kubectlw --request-timeout=3s version 1>/dev/null 2>&1; then
 fi
 log "API server URL is valid"
 
-# Wait until all target Pods are running
+# Wait until all target Pods are ready
 log "Waiting for target Pods to become ready..."
 while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
   [[ "$(echo "$daemonset" | jq '.status.numberReady')" -ne "$(echo "$daemonset" | jq '.status.desiredNumberScheduled')" ]]; do
   sleep 1
 done
 
-# Query cluster topology
+# Gather cluster topology information into JSON strings
 log "Gathering cluster topology information..."
+# Pods: [{"name":"","ip":"","node":""},{}]
 pod_topology=$(kubectlw get pods -l "app=conncheck-target" -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
+# Nodes: [{"name":"","ip":""},{}]
 node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
+# Service: {"name":"","ip":"","port":""}
 service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
 
-manifest='
+# Escape JSON so that they can be used as JSON string values
+json_escape() { sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g'; }
+pod_topology_escaped=$(echo "$pod_topology" | json_escape)
+node_topology_escaped=$(echo "$node_topology" | json_escape)
+service_topology_escaped=$(echo "$service_topology" | json_escape)
+
+# Manifest for the prober ReplicaSet (null values will be set dynamically)
+manifest=$(cat <<EOF
 {
   "apiVersion": "apps/v1",
   "kind": "ReplicaSet",
@@ -88,15 +98,15 @@ manifest='
             "env": [
               {
                 "name": "PODS",
-                "value": null
+                "value": "$pod_topology_escaped"
               },
               {
                 "name": "NODES",
-                "value": null
+                "value": "$node_topology_escaped"
               },
               {
                 "name": "SERVICE",
-                "value": null
+                "value": "$service_topology_escaped"
               },
               {
                 "name": "SELF_POD_NAME",
@@ -137,56 +147,73 @@ manifest='
     }
   }
 }
-'
-
-# TODO: if prober ReplicaSets are already running, just patch them with the new topology information (if controller is also running as a ReplicaSet).
-
-manifest=$(
-  echo "$manifest" |
-  jq --arg var "$pod_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "PODS") | .value) |= $var' |
-  jq --arg var "$node_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "NODES") | .value) |= $var' |
-  jq --arg var "$service_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "SERVICE") | .value) |= $var'
+EOF
 )
 
-# Run two prober ReplicaSets: one in the Pod network and one in the host network
-for name in conncheck-prober conncheck-prober-hostnet; do
-  manifest=$(
-    echo "$manifest" |
-    jq ".metadata.name = \"$name\"" |
-    jq ".spec.selector.matchLabels.app = \"$name\"" |
-    jq ".spec.template.metadata.labels.app = \"$name\""
-  )
-  if [[ "$name" = conncheck-prober-hostnet ]]; then
-    manifest=$(
-      echo "$manifest" |
-      jq '.spec.template.spec.hostNetwork = true' |
-      jq '.spec.template.spec.dnsPolicy = "ClusterFirstWithHostNet"'
-    )
-  fi
-  file=$(mktemp) && echo "$manifest" >"$file"
+# Patch for the prober ReplicaSet for updating the topology information
+patch=$(cat <<EOF
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "k8s-conncheck-prober",
+            "env": [
+              {
+                "name": "PODS",
+                "value": "$node_topology_escaped"
+              },
+              {
+                "name": "NODES",
+                "value": "$pod_topology_escaped"
+              },
+              {
+                "name": "SERVICE",
+                "value": "$service_topology_escaped"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+)
 
-  log "Creating ReplicaSet \"$name\"..."
-  kubectlw create -f "$file" >/dev/null
+# Create (or patch) the two prober ReplicaSets
+for name in conncheck-prober conncheck-prober-hostnet; do
+
+  # If the ReplicaSet already exists, patch it (causes prober Pod to restart).
+  # Occurs when the controller Pod has already been running and is restarted.
+  if kubectlw get replicaset "$name" 1>/dev/null 2>&1; then
+    log "Patching ReplicaSet \"$name\" with current topology information (Pod will restart)..."
+    kubectlw patch replicaset "$name" -p "$patch" >/dev/null
+
+  # If the ReplicaSet doesn't exist, adapt the manifest, and create it. Occurs
+  # when the controller Pod starts up for the first time.
+  else
+    m=$manifest
+    m=$(
+      echo "$m" |
+      jq ".metadata.name = \"$name\"" |
+      jq ".spec.selector.matchLabels.app = \"$name\"" |
+      jq ".spec.template.metadata.labels.app = \"$name\""
+    )
+    if [[ "$name" = conncheck-prober-hostnet ]]; then
+      m=$(
+        echo "$m" |
+        jq '.spec.template.spec.hostNetwork = true' |
+        jq '.spec.template.spec.dnsPolicy = "ClusterFirstWithHostNet"'
+      )
+    fi
+    log "Creating ReplicaSet \"$name\"..."
+    file=$(mktemp) && echo "$m" >"$file"
+    kubectlw create -f "$file" >/dev/null
+  fi
 done
 
 log Done
+
 sleep infinity
- 
-#  # Patch Pod template of Deployment with topology information (restarts Pod)
-#  log "Patching \"$deployment_name\"..."
-#  patch=$(cat <<EOF
-#spec:
-#  template:
-#    spec:
-#      containers:
-#        - name: k8s-conncheck-prober
-#          env:
-#            - name: PODS
-#              value: '$pod_topology'
-#            - name: NODES
-#              value: '$node_topology'
-#            - name: SERVICE 
-#              value: '$service_topology'
-#EOF
-#)
-#  kubectlw patch deployment "$deployment_name" -p "$patch" >/dev/null
