@@ -16,16 +16,19 @@ metadata:
 rules:
 - verbs: [get]
   resources: [daemonsets]
-  apiGroups: ["apps", "extensions"]
+  apiGroups: [apps, extensions]
 - verbs: [list]
   resources: [pods, nodes]
   apiGroups: [""]
 - verbs: [get]
   resources: [services]
   apiGroups: [""]
-- verbs: [create, get, patch]
+- verbs: [create, get]
   resources: [replicasets]
-  apiGroups: ["apps"]
+  apiGroups: [apps]
+- verbs: [delete]
+  resources: [pods]
+  apiGroups: [""]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

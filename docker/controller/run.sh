@@ -53,7 +53,7 @@ while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
   sleep 1
 done
 
-# Gather cluster topology information into JSON strings
+# Gather cluster topology information into JSON objects
 log "Gathering cluster topology information..."
 # Pods: [{"name":"","ip":"","node":""},{}]
 pod_topology=$(kubectlw get pods -l "app=conncheck-target" -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
@@ -62,7 +62,7 @@ node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata
 # Service: {"name":"","ip":"","port":""}
 service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
 
-# Escape JSON so that they can be used as JSON string values
+# Escape JSON objects so that they can be used as JSON string values
 json_escape() { sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g'; }
 pod_topology_escaped=$(echo "$pod_topology" | json_escape)
 node_topology_escaped=$(echo "$node_topology" | json_escape)
@@ -150,70 +150,38 @@ manifest=$(cat <<EOF
 EOF
 )
 
-# Patch for the prober ReplicaSet for updating the topology information
-patch=$(cat <<EOF
-{
-  "spec": {
-    "template": {
-      "spec": {
-        "containers": [
-          {
-            "name": "k8s-conncheck-prober",
-            "env": [
-              {
-                "name": "PODS",
-                "value": "$node_topology_escaped"
-              },
-              {
-                "name": "NODES",
-                "value": "$pod_topology_escaped"
-              },
-              {
-                "name": "SERVICE",
-                "value": "$service_topology_escaped"
-              }
-            ]
-          }
-        ]
-      }
-    }
-  }
-}
-EOF
-)
-
-# Create (or patch) the two prober ReplicaSets
 for name in conncheck-prober conncheck-prober-hostnet; do
-
-  # If the ReplicaSet already exists, patch it (causes prober Pod to restart).
-  # Occurs when the controller Pod has already been running and is restarted.
-  if kubectlw get replicaset "$name" 1>/dev/null 2>&1; then
-    log "Patching ReplicaSet \"$name\" with current topology information (Pod will restart)..."
-    kubectlw patch replicaset "$name" -p "$patch" >/dev/null
-
-  # If the ReplicaSet doesn't exist, adapt the manifest, and create it. Occurs
-  # when the controller Pod starts up for the first time.
-  else
-    m=$manifest
+  # Adapt manifest for the specific ReplicaSet
+  m=$manifest
+  m=$(
+    echo "$m" |
+    jq ".metadata.name = \"$name\"" |
+    jq ".spec.selector.matchLabels.app = \"$name\"" |
+    jq ".spec.template.metadata.labels.app = \"$name\""
+  )
+  if [[ "$name" = conncheck-prober-hostnet ]]; then
     m=$(
       echo "$m" |
-      jq ".metadata.name = \"$name\"" |
-      jq ".spec.selector.matchLabels.app = \"$name\"" |
-      jq ".spec.template.metadata.labels.app = \"$name\""
+      jq '.spec.template.spec.hostNetwork = true' |
+      jq '.spec.template.spec.dnsPolicy = "ClusterFirstWithHostNet"'
     )
-    if [[ "$name" = conncheck-prober-hostnet ]]; then
-      m=$(
-        echo "$m" |
-        jq '.spec.template.spec.hostNetwork = true' |
-        jq '.spec.template.spec.dnsPolicy = "ClusterFirstWithHostNet"'
-      )
-    fi
+  fi
+  file=$(mktemp) && echo "$m" >"$file"
+  
+  # If the ReplicaSet already exists, update it and then restart the Pod. This
+  # occurs if the controller Pod has already been running and is restarted.
+  if kubectlw get replicaset "$name" 1>/dev/null 2>&1; then
+    log "Updating ReplicaSet \"$name\" and restarting Pod..."
+    kubectlw apply -f "$file" >/dev/null
+    kubectl delete pods -l app="$name" >/dev/null
+
+  # If the ReplicaSet doesn't exist, create it. This occurs if the controller Pod
+  # runs for the first time.
+  else
     log "Creating ReplicaSet \"$name\"..."
-    file=$(mktemp) && echo "$m" >"$file"
-    kubectlw create -f "$file" >/dev/null
+    kubectlw apply -f "$file" >/dev/null
   fi
 done
 
 log Done
-
 sleep infinity
