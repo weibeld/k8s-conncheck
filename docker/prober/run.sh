@@ -68,7 +68,7 @@ fi
 log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Pod on local node"
-target=$(echo "$PODS" | jq "map(select(.node==\"$SELF_NODE_NAME\")) | first")
+target=$(echo "$POD_INFO" | jq "map(select(.node==\"$SELF_NODE_NAME\")) | first")
 target_ip=$(echo "$target" | jq -r .ip)
 target_name=$(echo "$target" | jq -r .name)
 if icmp "$target_ip"; then
@@ -79,7 +79,7 @@ fi
 log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Pod on remote node"
-target=$(echo "$PODS" | jq "map(select(.node!=\"$SELF_NODE_NAME\")) | first")
+target=$(echo "$POD_INFO" | jq "map(select(.node!=\"$SELF_NODE_NAME\")) | first")
 target_ip=$(echo "$target" | jq -r .ip)
 target_name=$(echo "$target" | jq -r .name)
 if icmp "$target_ip"; then
@@ -90,7 +90,7 @@ fi
 log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Local node"
-target=$(echo "$NODES" | jq "map(select(.name==\"$SELF_NODE_NAME\")) | first")
+target=$(echo "$NODE_INFO" | jq "map(select(.name==\"$SELF_NODE_NAME\")) | first")
 target_ip=$(echo "$target" | jq -r .ip)
 target_name=$(echo "$target" | jq -r .name)
 if icmp "$target_ip"; then
@@ -101,7 +101,7 @@ fi
 log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Remote node"
-target=$(echo "$NODES" | jq "map(select(.name!=\"$SELF_NODE_NAME\")) | first")
+target=$(echo "$NODE_INFO" | jq "map(select(.name!=\"$SELF_NODE_NAME\")) | first")
 target_ip=$(echo "$target" | jq -r .ip)
 target_name=$(echo "$target" | jq -r .name)
 if icmp "$target_ip"; then
@@ -112,9 +112,9 @@ fi
 log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Service"
-target_ip=$(echo "$SERVICE" | jq -r .ip)
-target_name=$(echo "$SERVICE" | jq -r .name)
-target_port=$(echo "$SERVICE" | jq -r .port)
+target_ip=$(echo "$SERVICE_INFO" | jq -r .ip)
+target_name=$(echo "$SERVICE_INFO" | jq -r .name)
+target_port=$(echo "$SERVICE_INFO" | jq -r .port)
 if tcp "$target_ip" "$target_port"; then
   success=true
 else
@@ -134,7 +134,7 @@ log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Internal DNS resolution"
 target_ip=""
-target_name=$(echo "$SERVICE" | jq -r .name)
+target_name=$(echo "$SERVICE_INFO" | jq -r .name)
 if dns "$target_name"; then
   success=true
 else

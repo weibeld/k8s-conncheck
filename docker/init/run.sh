@@ -56,17 +56,17 @@ done
 # Gather cluster topology information into JSON objects
 log "Gathering cluster topology information..."
 # Pods: [{"name":"","ip":"","node":""},{}]
-pod_topology=$(kubectlw get pods -l app=target -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
+pod_info=$(kubectlw get pods -l app=target -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
 # Nodes: [{"name":"","ip":""},{}]
-node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
+node_info=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
 # Service: {"name":"","ip":"","port":""}
-service_topology=$(kubectlw get service target-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
+service_info=$(kubectlw get service target-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
 
 # Escape JSON objects so that they can be used as JSON string values
 json_escape() { sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g'; }
-pod_topology_escaped=$(echo "$pod_topology" | json_escape)
-node_topology_escaped=$(echo "$node_topology" | json_escape)
-service_topology_escaped=$(echo "$service_topology" | json_escape)
+pod_info_escaped=$(echo "$pod_info" | json_escape)
+node_info_escaped=$(echo "$node_info" | json_escape)
+service_info_escaped=$(echo "$service_info" | json_escape)
 
 # Manifest for the prober ReplicaSet (null values will be set dynamically)
 manifest=$(cat <<EOF
@@ -97,16 +97,16 @@ manifest=$(cat <<EOF
             "imagePullPolicy": "Always",
             "env": [
               {
-                "name": "PODS",
-                "value": "$pod_topology_escaped"
+                "name": "POD_INFO",
+                "value": "$pod_info_escaped"
               },
               {
-                "name": "NODES",
-                "value": "$node_topology_escaped"
+                "name": "NODE_INFO",
+                "value": "$node_info_escaped"
               },
               {
-                "name": "SERVICE",
-                "value": "$service_topology_escaped"
+                "name": "SERVICE_INFO",
+                "value": "$service_info_escaped"
               },
               {
                 "name": "SELF_POD_NAME",
