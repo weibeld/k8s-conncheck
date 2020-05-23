@@ -33,6 +33,8 @@ kubectlw() {
     "$@"
 }
 
+# TODO: test if API server can be reached with above extracted URL and show an error message if not
+
 log "Initialising..."
 
 # Wait until all target Pods are running
@@ -49,7 +51,7 @@ service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name
 manifest='
 {
   "apiVersion": "apps/v1",
-  "kind": "Deployment",
+  "kind": "ReplicaSet",
   "metadata": {
     "name": null
   },
@@ -126,6 +128,8 @@ manifest='
 }
 '
 
+# TODO: if prober ReplicaSets are already running, just patch them with the new topology information (if controller is also running as a ReplicaSet).
+
 manifest=$(
   echo "$manifest" |
   jq --arg var "$pod_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "PODS") | .value) |= $var' |
@@ -133,7 +137,7 @@ manifest=$(
   jq --arg var "$service_topology" '(.spec.template.spec.containers[0].env[] | select(.name == "SERVICE") | .value) |= $var'
 )
 
-# Run two prober Deployments: one in the Pod network and one in the host network
+# Run two prober ReplicaSets: one in the Pod network and one in the host network
 for name in conncheck-prober conncheck-prober-hostnet; do
   manifest=$(
     echo "$manifest" |
@@ -150,7 +154,7 @@ for name in conncheck-prober conncheck-prober-hostnet; do
   fi
   file=$(mktemp) && echo "$manifest" >"$file"
 
-  log "Creating Deployment \"$name\"..."
+  log "Creating ReplicaSet \"$name\"..."
   kubectlw create -f "$file" >/dev/null
 done
 

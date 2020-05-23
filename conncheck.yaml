@@ -24,7 +24,7 @@ rules:
   resources: [services]
   apiGroups: [""]
 - verbs: [create]
-  resources: [deployments]
+  resources: [replicasets]
   apiGroups: ["apps"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
