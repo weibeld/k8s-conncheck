@@ -40,22 +40,30 @@ subjects:
   name: conncheck-controller
   namespace: conncheck
 ---
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: ReplicaSet
 metadata:
   name: conncheck-controller
   namespace: conncheck
 spec:
-  hostNetwork: true
-  dnsPolicy: ClusterFirstWithHostNet
-  restartPolicy: Never
-  serviceAccountName: conncheck-controller
-  containers:
-  - image: weibeld/k8s-conncheck-controller
-    name: conncheck-controller
-    imagePullPolicy: Always
-    securityContext:
-      privileged: true
+  replicas: 1
+  selector:
+    matchLabels:
+      app: conncheck-controller
+  template:
+    metadata:
+      labels:
+        app: conncheck-controller    
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: conncheck-controller
+      containers:
+        - image: weibeld/k8s-conncheck-controller
+          name: conncheck-controller
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
 ---
 apiVersion: v1
 kind: Service
