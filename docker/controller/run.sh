@@ -14,6 +14,8 @@ service=$(iptables -t nat -L KUBE-SERVICES | grep default/kubernetes | grep '^KU
 endpoint=$(iptables -t nat -L "$service" | grep '^KUBE-SEP' | head -n 1| awk '{print $1}')
 apiserver_ip=$(iptables -t nat -S "$endpoint" | grep DNAT | awk '{for (i=1;i<=NF;i++) if ($i=="--to-destination") print $(i+1)}')
 apiserver_url=https://"$apiserver_ip"
+log "Detected API server URL: $apiserver_url"
+
 
 # Wrapper around kubectl for connecting directly to the API server. By default,
 # kubectl finds out how to connect to the API server with the information in the
@@ -35,7 +37,7 @@ kubectlw() {
 
 # TODO: test if API server can be reached with above extracted URL and show an error message if not
 
-log "Initialising..."
+log "Gathering cluster topology information..."
 
 # Wait until all target Pods are running
 while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
