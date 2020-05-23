@@ -48,7 +48,7 @@ log "API server URL is valid"
 
 # Wait until all target Pods are ready
 log "Waiting for target Pods to become ready..."
-while ! daemonset=$(kubectlw get daemonset conncheck-target -o json) ||
+while ! daemonset=$(kubectlw get daemonset target -o json) ||
   [[ "$(echo "$daemonset" | jq '.status.numberReady')" -ne "$(echo "$daemonset" | jq '.status.desiredNumberScheduled')" ]]; do
   sleep 1
 done
@@ -56,11 +56,11 @@ done
 # Gather cluster topology information into JSON objects
 log "Gathering cluster topology information..."
 # Pods: [{"name":"","ip":"","node":""},{}]
-pod_topology=$(kubectlw get pods -l "app=conncheck-target" -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
+pod_topology=$(kubectlw get pods -l app=target -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.podIP, node: .spec.nodeName}]')
 # Nodes: [{"name":"","ip":""},{}]
 node_topology=$(kubectlw get nodes -o json | jq -c '[.items[] | {name: .metadata.name, ip: .status.addresses[] | select(.type == "InternalIP") | .address}]')
 # Service: {"name":"","ip":"","port":""}
-service_topology=$(kubectlw get service conncheck-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
+service_topology=$(kubectlw get service target-service -o json | jq -c '{name: .metadata.name, ip: .spec.clusterIP, port: .spec.ports[0].port}')
 
 # Escape JSON objects so that they can be used as JSON string values
 json_escape() { sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g'; }
@@ -150,7 +150,7 @@ manifest=$(cat <<EOF
 EOF
 )
 
-for name in conncheck-prober conncheck-prober-hostnet; do
+for name in prober prober-hostnet; do
   # Adapt manifest for the specific ReplicaSet
   m=$manifest
   m=$(
@@ -169,13 +169,13 @@ for name in conncheck-prober conncheck-prober-hostnet; do
   file=$(mktemp) && echo "$m" >"$file"
   
   # If the ReplicaSet already exists, update it and then restart the Pod. This
-  # occurs if the controller Pod has already been running and is restarted.
+  # occurs if the init Pod has already been running and is restarted.
   if kubectlw get replicaset "$name" 1>/dev/null 2>&1; then
     log "Updating ReplicaSet \"$name\" and restarting Pod..."
     kubectlw apply -f "$file" >/dev/null
     kubectl delete pods -l app="$name" >/dev/null
 
-  # If the ReplicaSet doesn't exist, create it. This occurs if the controller Pod
+  # If the ReplicaSet doesn't exist, create it. This occurs if the init Pod
   # runs for the first time.
   else
     log "Creating ReplicaSet \"$name\"..."

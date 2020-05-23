@@ -1,18 +1,18 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: conncheck
+  name: k8s-conncheck
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: conncheck-controller
-  namespace: conncheck
+  name: k8s-conncheck
+  namespace: k8s-conncheck
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: conncheck-controller
+  name: k8s-conncheck
 rules:
 - verbs: [get]
   resources: [daemonsets]
@@ -33,37 +33,37 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: conncheck-controller
+  name: k8s-conncheck
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: conncheck-controller
+  name: k8s-conncheck
 subjects:
 - kind: ServiceAccount
-  name: conncheck-controller
-  namespace: conncheck
+  name: k8s-conncheck
+  namespace: k8s-conncheck
 ---
 apiVersion: apps/v1
 kind: ReplicaSet
 metadata:
-  name: conncheck-controller
-  namespace: conncheck
+  name: init
+  namespace: k8s-conncheck
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: conncheck-controller
+      app: init
   template:
     metadata:
       labels:
-        app: conncheck-controller    
+        app: init
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      serviceAccountName: conncheck-controller
+      serviceAccountName: k8s-conncheck
       containers:
-        - image: weibeld/k8s-conncheck-controller
-          name: conncheck-controller
+        - image: weibeld/k8s-conncheck-init
+          name: k8s-conncheck-init
           imagePullPolicy: Always
           securityContext:
             privileged: true
@@ -71,11 +71,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: conncheck-service
-  namespace: conncheck
+  name: target-service
+  namespace: k8s-conncheck
 spec:
   selector:
-    app: conncheck-target
+    app: target
   ports:
   - port: 1024
     targetPort: 1024
@@ -83,17 +83,17 @@ spec:
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: conncheck-target
-  namespace: conncheck
+  name: target
+  namespace: k8s-conncheck
 spec:
   selector:
     matchLabels:
-      app: conncheck-target
+      app: target
   template:
     metadata:
       labels:
-        app: conncheck-target
+        app: target
     spec:
       containers:
       - image: weibeld/k8s-conncheck-target
-        name: conncheck-target
+        name: k8s-conncheck-target
