@@ -124,8 +124,9 @@ log "$(format_result "$description" "$target_ip" "$target_name" "$success")"
 
 description="Internet"
 target_ip=198.41.0.4
+target_port=53
 target_name=a.root-servers.net
-if icmp "$target_ip"; then
+if tcp "$target_ip" "$target_port"; then
   success=true
 else
   success=false
