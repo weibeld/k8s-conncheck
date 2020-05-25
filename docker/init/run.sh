@@ -159,7 +159,7 @@ for name in prober prober-hostnet; do
     jq ".spec.selector.matchLabels.app = \"$name\"" |
     jq ".spec.template.metadata.labels.app = \"$name\""
   )
-  if [[ "$name" = conncheck-prober-hostnet ]]; then
+  if [[ "$name" = prober-hostnet ]]; then
     m=$(
       echo "$m" |
       jq '.spec.template.spec.hostNetwork = true' |
