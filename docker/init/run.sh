@@ -20,10 +20,18 @@ error() {
 # is then used for the --server  flag of kubectl. If the --server flag is set,
 # the --certificate-authority and  --token flags must also be explicitly set.
 kubectlw() {
+  # In some clusters, the API server certificate doen't include the IP address
+  # of the API server as a subject alternative name (for example, on AKS). In
+  # these cases, verfification of the API server certificate must be disabled.
+  if [[ -n "$skip_server_cert_verification" ]]; then
+    server_cert_flag=--insecure-skip-tls-verify=true
+  else
+    server_cert_flag=--certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  fi
   kubectl \
     --server "$apiserver_url" \
-    --certificate-authority /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
     --token "$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+    "$server_cert_flag" \
     "$@"
 }
 
@@ -41,9 +49,15 @@ log "Detected API server URL: $apiserver_url"
 
 # Check API server URL
 log "Checking API server URL..."
-if ! kubectlw --request-timeout=3s version 1>/dev/null 2>&1; then
-  error "API server URL $apiserver_url is invalid"
-fi
+curl --connect-timeout 3 --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" "$apiserver_url" >/dev/null 2>&1
+# Exit code 60 means that the connection succeeded, but curl could not verify
+# the server cert with the provided CA cert. In this case, enable skipping the
+# verificatino of the API server certificate for all future kubectl commands.
+case "$?" in
+  0)  unset skip_server_cert_verification ;;
+  60) skip_server_cert_verification=true ;;
+  *)  error "API server URL $apiserver_url is invalid" ;;
+esac
 log "API server URL is valid"
 
 # Wait until all target Pods are ready
