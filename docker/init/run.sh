@@ -52,7 +52,7 @@ log "Checking API server URL..."
 curl --connect-timeout 3 --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" "$apiserver_url" >/dev/null 2>&1
 # Exit code 60 means that the connection succeeded, but curl could not verify
 # the server cert with the provided CA cert. In this case, enable skipping the
-# verificatino of the API server certificate for all future kubectl commands.
+# verification of the API server certificate for all future kubectl commands.
 case "$?" in
   0)  unset skip_server_cert_verification ;;
   60) skip_server_cert_verification=true ;;
